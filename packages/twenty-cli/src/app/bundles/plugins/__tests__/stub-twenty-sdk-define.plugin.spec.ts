@@ -100,3 +100,65 @@ export default defineThing({});`,
     });
   });
 });
+
+describe('buildStubModuleSource with nested plain data', () => {
+  it('keeps a nested object map readable at runtime', async () => {
+    const Registry = {
+      callRecording: {
+        universalIdentifier: 'call-recording-id',
+        fields: {
+          video: { universalIdentifier: 'video-field-id' },
+          audio: { universalIdentifier: 'audio-field-id' },
+        },
+      },
+    };
+
+    const { Registry: stubbedRegistry } = await importSource(
+      buildStubModuleSource({ Registry }),
+    );
+
+    expect(
+      stubbedRegistry.callRecording.fields.video.universalIdentifier,
+    ).toBe('video-field-id');
+    expect(
+      stubbedRegistry.callRecording.fields.audio.universalIdentifier,
+    ).toBe('audio-field-id');
+  });
+
+  it('keeps nested arrays of plain data', async () => {
+    const Flows = {
+      steps: [{ id: 'first' }, { id: 'second' }],
+      labels: ['a', 'b'],
+    };
+
+    const { Flows: stubbedFlows } = await importSource(
+      buildStubModuleSource({ Flows }),
+    );
+
+    expect(stubbedFlows.steps).toEqual([{ id: 'first' }, { id: 'second' }]);
+    expect(stubbedFlows.labels).toEqual(['a', 'b']);
+  });
+
+  it('still falls back to the stub when a nested leaf is not plain data', async () => {
+    const Mixed = {
+      data: { id: 'a' },
+      handler: () => 'not plain data',
+    };
+
+    const { Mixed: stubbedMixed } = await importSource(
+      buildStubModuleSource({ Mixed }),
+    );
+
+    expect(typeof stubbedMixed).toBe('function');
+  });
+
+  it('keeps a nested export in the generated source so the bundler can drop it when unused', () => {
+    const BigRegistry = {
+      deeply: { nested: { universalIdentifier: 'unused-nested-id' } },
+    };
+
+    expect(buildStubModuleSource({ BigRegistry })).toContain(
+      'unused-nested-id',
+    );
+  });
+});

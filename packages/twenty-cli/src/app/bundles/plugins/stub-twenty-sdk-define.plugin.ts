@@ -13,9 +13,49 @@ const isPrimitive = (value: unknown): boolean =>
   typeof value === 'number' ||
   typeof value === 'boolean';
 
+// Depth cap so a self-referential export cannot recurse forever: JSON
+// serialization below would throw on it anyway.
+const MAX_PLAIN_DATA_DEPTH = 100;
+
+const isPlainDataAtDepth = (value: unknown, depth: number): boolean => {
+  if (isPrimitive(value)) {
+    return true;
+  }
+
+  if (depth >= MAX_PLAIN_DATA_DEPTH) {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every((item) => isPlainDataAtDepth(item, depth + 1));
+  }
+
+  if (!isPlainObject(value)) {
+    return false;
+  }
+
+  const enumerableNames = Object.keys(value);
+
+  if (
+    !enumerableNames.every((name) =>
+      isPlainDataAtDepth((value as Record<string, unknown>)[name], depth + 1),
+    )
+  ) {
+    return false;
+  }
+
+  // Nested objects are serialized with JSON, which drops non-enumerable
+  // properties; the serializer below only restores them on the export itself.
+  // A nested non-enumerable property would therefore vanish silently, so such
+  // an export keeps the stub instead. The export's own non-enumerable
+  // primitives are still preserved through the Object.defineProperties wrapper.
+  return depth === 0
+    ? true
+    : Object.getOwnPropertyNames(value).length === enumerableNames.length;
+};
+
 export const isPlainDataExport = (value: unknown): boolean =>
-  isPrimitive(value) ||
-  (isPlainObject(value) && Object.values(value).every(isPrimitive));
+  isPlainDataAtDepth(value, 0);
 
 const serializePlainDataExport = (value: unknown): string => {
   const json = JSON.stringify(value);
